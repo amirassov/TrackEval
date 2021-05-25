@@ -54,11 +54,11 @@ class Identity(_BaseMetric):
             # Count the potential matches between ids in each timestep
             matches_mask = np.greater_equal(data['similarity_scores'][t], self.threshold)
             match_idx_gt, match_idx_tracker = np.nonzero(matches_mask)
-            potential_matches_count[gt_ids_t[match_idx_gt], tracker_ids_t[match_idx_tracker]] += 1
+            potential_matches_count[gt_ids_t[match_idx_gt.tolist()].tolist(), tracker_ids_t[match_idx_tracker.tolist()].tolist()] += 1
 
             # Calculate the total number of dets for each gt_id and tracker_id.
-            gt_id_count[gt_ids_t] += 1
-            tracker_id_count[tracker_ids_t] += 1
+            gt_id_count[gt_ids_t.tolist()] += 1
+            tracker_id_count[tracker_ids_t.tolist()] += 1
 
         # Calculate optimal assignment cost matrix for ID metrics
         num_gt_ids = data['num_gt_ids']

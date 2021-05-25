@@ -58,11 +58,11 @@ class HOTA(_BaseMetric):
             sim_iou = np.zeros_like(similarity)
             sim_iou_mask = sim_iou_denom > 0 + np.finfo('float').eps
             sim_iou[sim_iou_mask] = similarity[sim_iou_mask] / sim_iou_denom[sim_iou_mask]
-            potential_matches_count[gt_ids_t[:, np.newaxis], tracker_ids_t[np.newaxis, :]] += sim_iou
+            potential_matches_count[gt_ids_t[:, np.newaxis].tolist(), tracker_ids_t[np.newaxis, :].tolist()] += sim_iou
 
             # Calculate the total number of dets for each gt_id and tracker_id.
-            gt_id_count[gt_ids_t] += 1
-            tracker_id_count[0, tracker_ids_t] += 1
+            gt_id_count[gt_ids_t.tolist()] += 1
+            tracker_id_count[0, tracker_ids_t.tolist()] += 1
 
         # Calculate overall jaccard alignment score (before unique matching) between IDs
         global_alignment_score = potential_matches_count / (gt_id_count + tracker_id_count - potential_matches_count)
