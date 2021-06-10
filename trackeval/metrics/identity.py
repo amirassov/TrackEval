@@ -177,10 +177,10 @@ class TrackIdentity(Identity):
         fn_mat[:num_gt_ids, num_tracker_ids:] = 1e10
         for gt_id in range(num_gt_ids):
             fn_mat[gt_id, :num_tracker_ids] = gt_id_count[gt_id]
-            fn_mat[gt_id, num_tracker_ids + gt_id] = 1.0
+            fn_mat[gt_id, num_tracker_ids + gt_id] = 1.0 - 1e-6
         for tracker_id in range(num_tracker_ids):
             fp_mat[:num_gt_ids, tracker_id] = tracker_id_count[tracker_id]
-            fp_mat[tracker_id + num_gt_ids, tracker_id] = 1.0
+            fp_mat[tracker_id + num_gt_ids, tracker_id] = 1.0 - 1e-6
         fn_mat[:num_gt_ids, :num_tracker_ids] -= potential_matches_count
         fp_mat[:num_gt_ids, :num_tracker_ids] -= potential_matches_count
         cost_matrix = fn_mat + fp_mat
