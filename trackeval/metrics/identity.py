@@ -19,8 +19,8 @@ class Identity(_BaseMetric):
 
     def __init__(self, config=None):
         super().__init__()
-        self.integer_fields = ['IDTP', 'IDFN', 'IDFP', 'track_IDTP', 'track_IDFN', 'track_IDFP']
-        self.float_fields = ['IDF1', 'IDR', 'IDP', 'track_IDF1', 'track_IDR', 'track_IDP']
+        self.integer_fields = ['IDTP', 'IDFN', 'IDFP']
+        self.float_fields = ['IDF1', 'IDR', 'IDP']
         self.fields = self.float_fields + self.integer_fields
         self.summary_fields = self.fields
 
@@ -39,11 +39,9 @@ class Identity(_BaseMetric):
         # Return result quickly if tracker or gt sequence is empty
         if data['num_tracker_dets'] == 0:
             res['IDFN'] = data['num_gt_dets']
-            res['track_IDFN'] = data['num_gt_ids']
             return res
         if data['num_gt_dets'] == 0:
             res['IDFP'] = data['num_tracker_dets']
-            res['track_IDFP'] = data['num_tracker_ids']
             return res
 
         # Variables counting global association
@@ -85,10 +83,6 @@ class Identity(_BaseMetric):
         res['IDFN'] = fn_mat[match_rows, match_cols].sum().astype(np.int)
         res['IDFP'] = fp_mat[match_rows, match_cols].sum().astype(np.int)
         res['IDTP'] = (gt_id_count.sum() - res['IDFN']).astype(np.int)
-
-        res['track_IDFN'] = np.sum(np.logical_and(match_rows < num_gt_ids, match_cols >= num_tracker_ids)).astype(np.int)
-        res['track_IDFP'] = np.sum(np.logical_and(match_rows >= num_gt_ids, match_cols < num_tracker_ids)).astype(np.int)
-        res['track_IDTP'] = (num_gt_ids - res['track_IDFN']).astype(np.int)
 
         # Calculate final ID scores
         res = self._compute_final_fields(res)
@@ -135,8 +129,86 @@ class Identity(_BaseMetric):
         """Calculate sub-metric ('field') values which only depend on other sub-metric values.
         This function is used both for both per-sequence calculation, and in combining values across sequences.
         """
-        for prefix in ["", "track_"]:
-            res[f'{prefix}IDR'] = res[f'{prefix}IDTP'] / np.maximum(1.0, res[f'{prefix}IDTP'] + res[f'{prefix}IDFN'])
-            res[f'{prefix}IDP'] = res[f'{prefix}IDTP'] / np.maximum(1.0, res[f'{prefix}IDTP'] + res[f'{prefix}IDFP'])
-            res[f'{prefix}IDF1'] = res[f'{prefix}IDTP'] / np.maximum(1.0, res[f'{prefix}IDTP'] + 0.5 * res[f'{prefix}IDFP'] + 0.5 * res[f'{prefix}IDFN'])
+        res['IDR'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFN'])
+        res['IDP'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFP'])
+        res['IDF1'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + 0.5 * res['IDFP'] + 0.5 * res['IDFN'])
+        return res
+
+
+class TrackIdentity(Identity):
+    @_timing.time
+    def eval_sequence(self, data):
+        """Calculates ID metrics for one sequence"""
+        # Initialise results
+        res = {}
+        for field in self.fields:
+            res[field] = 0
+
+        # Return result quickly if tracker or gt sequence is empty
+        if data['num_tracker_dets'] == 0:
+            res['IDFN'] = data['num_gt_ids']
+            return res
+        if data['num_gt_dets'] == 0:
+            res['IDFP'] = data['num_tracker_ids']
+            return res
+
+        # Variables counting global association
+        potential_matches_count = np.zeros((data['num_gt_ids'], data['num_tracker_ids']))
+        gt_id_count = np.zeros(data['num_gt_ids'])
+        tracker_id_count = np.zeros(data['num_tracker_ids'])
+
+        # First loop through each timestep and accumulate global track information.
+        for t, (gt_ids_t, tracker_ids_t) in enumerate(zip(data['gt_ids'], data['tracker_ids'])):
+            # Count the potential matches between ids in each timestep
+            matches_mask = np.greater_equal(data['similarity_scores'][t], self.threshold)
+            match_idx_gt, match_idx_tracker = np.nonzero(matches_mask)
+            potential_matches_count[gt_ids_t[match_idx_gt.tolist()].tolist(), tracker_ids_t[match_idx_tracker.tolist()].tolist()] += 1
+
+            # Calculate the total number of dets for each gt_id and tracker_id.
+            gt_id_count[gt_ids_t.tolist()] += 1
+            tracker_id_count[tracker_ids_t.tolist()] += 1
+
+        # Calculate optimal assignment cost matrix for ID metrics
+        num_gt_ids = data['num_gt_ids']
+        num_tracker_ids = data['num_tracker_ids']
+        fp_mat = np.zeros((num_gt_ids + num_tracker_ids, num_gt_ids + num_tracker_ids))
+        fn_mat = np.zeros((num_gt_ids + num_tracker_ids, num_gt_ids + num_tracker_ids))
+        fp_mat[num_gt_ids:, :num_tracker_ids] = 1e10
+        fn_mat[:num_gt_ids, num_tracker_ids:] = 1e10
+        for gt_id in range(num_gt_ids):
+            fn_mat[gt_id, :num_tracker_ids] = gt_id_count[gt_id]
+            fn_mat[gt_id, num_tracker_ids + gt_id] = 1.0
+        for tracker_id in range(num_tracker_ids):
+            fp_mat[:num_gt_ids, tracker_id] = tracker_id_count[tracker_id]
+            fp_mat[tracker_id + num_gt_ids, tracker_id] = 1.0
+        fn_mat[:num_gt_ids, :num_tracker_ids] -= potential_matches_count
+        fp_mat[:num_gt_ids, :num_tracker_ids] -= potential_matches_count
+        cost_matrix = fn_mat + fp_mat
+        cost_matrix[:num_gt_ids, :num_tracker_ids] /= (cost_matrix[:num_gt_ids, :num_tracker_ids] + potential_matches_count)
+
+        # Hungarian algorithm for IDF1
+        match_rows, match_cols = linear_sum_assignment(cost_matrix)
+
+        # Hungarian algorithm for track_IDF1
+        res['IDFN'] = np.sum(np.logical_and(match_rows < num_gt_ids, match_cols >= num_tracker_ids)).astype(np.int)
+        res['IDFP'] = np.sum(np.logical_and(match_rows >= num_gt_ids, match_cols < num_tracker_ids)).astype(np.int)
+        res['IDTP'] = (num_gt_ids - res['IDFN']).astype(np.int)
+
+        # Calculate final ID scores
+        res = self._compute_final_fields(res)
+        return res
+
+    def combine_sequences(self, all_res, average: str = "macro"):
+        """Combines metrics across all sequences"""
+        res = {}
+        for field in self.integer_fields:
+            res[field] = self._combine_sum(all_res, field)
+
+        if average == "micro":
+            res = self._compute_final_fields(res)
+        elif average == "macro":
+            for field in self.float_fields:
+                res[field] = np.mean([all_res[k][field] for k in all_res.keys()]).astype(float)
+        else:
+            raise ValueError(f"Unexpected average value: {average}")
         return res
