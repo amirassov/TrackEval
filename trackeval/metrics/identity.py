@@ -19,8 +19,8 @@ class Identity(_BaseMetric):
 
     def __init__(self, config=None):
         super().__init__()
-        self.integer_fields = ['IDTP', 'IDFN', 'IDFP']
-        self.float_fields = ['IDF1', 'IDR', 'IDP']
+        self.integer_fields = ['IDTP', 'IDFN', 'IDFP', 'track_IDTP', 'track_IDFN', 'track_IDFP']
+        self.float_fields = ['IDF1', 'IDR', 'IDP', 'track_IDF1', 'track_IDR', 'track_IDP']
         self.fields = self.float_fields + self.integer_fields
         self.summary_fields = self.fields
 
@@ -39,9 +39,11 @@ class Identity(_BaseMetric):
         # Return result quickly if tracker or gt sequence is empty
         if data['num_tracker_dets'] == 0:
             res['IDFN'] = data['num_gt_dets']
+            res['track_IDFN'] = data['num_gt_ids']
             return res
         if data['num_gt_dets'] == 0:
             res['IDFP'] = data['num_tracker_dets']
+            res['track_IDFP'] = data['num_tracker_ids']
             return res
 
         # Variables counting global association
@@ -83,6 +85,10 @@ class Identity(_BaseMetric):
         res['IDFN'] = fn_mat[match_rows, match_cols].sum().astype(np.int)
         res['IDFP'] = fp_mat[match_rows, match_cols].sum().astype(np.int)
         res['IDTP'] = (gt_id_count.sum() - res['IDFN']).astype(np.int)
+
+        res['track_IDFN'] = np.sum(np.logical_and(match_rows < num_gt_ids, match_cols >= num_tracker_ids)).astype(np.int)
+        res['track_IDFP'] = np.sum(np.logical_and(match_rows >= num_gt_ids, match_cols < num_tracker_ids)).astype(np.int)
+        res['track_IDTP'] = (num_gt_ids - res['track_IDFN']).astype(np.int)
 
         # Calculate final ID scores
         res = self._compute_final_fields(res)
@@ -129,7 +135,8 @@ class Identity(_BaseMetric):
         """Calculate sub-metric ('field') values which only depend on other sub-metric values.
         This function is used both for both per-sequence calculation, and in combining values across sequences.
         """
-        res['IDR'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFN'])
-        res['IDP'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFP'])
-        res['IDF1'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + 0.5 * res['IDFP'] + 0.5 * res['IDFN'])
+        for prefix in ["", "track_"]:
+            res[f'{prefix}IDR'] = res[f'{prefix}IDTP'] / np.maximum(1.0, res[f'{prefix}IDTP'] + res[f'{prefix}IDFN'])
+            res[f'{prefix}IDP'] = res[f'{prefix}IDTP'] / np.maximum(1.0, res[f'{prefix}IDTP'] + res[f'{prefix}IDFP'])
+            res[f'{prefix}IDF1'] = res[f'{prefix}IDTP'] / np.maximum(1.0, res[f'{prefix}IDTP'] + 0.5 * res[f'{prefix}IDFP'] + 0.5 * res[f'{prefix}IDFN'])
         return res
