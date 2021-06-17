@@ -192,14 +192,14 @@ class TrackIdentity(Identity):
         # Hungarian algorithm for IDF1
         match_rows, match_cols = linear_sum_assignment(cost_matrix)
         match_mask = np.logical_and(match_rows < num_gt_ids, match_cols < num_tracker_ids)
-        mask_track_iou = np.less_equal(potential_matches_count[match_rows[match_mask],
-                                                               match_cols[match_mask]] /
-                                       tracker_id_count[match_cols[match_mask]],
-                                       self.track_iou_threshold)  # relative to predicted track length intersection
-        match_cols[np.where(match_mask)[0][mask_track_iou]] = num_tracker_ids  # pred tracks with relative iou to predicted track length lower then thresh are sent to FN
+        # pred tracks with relative iou to predicted track length lower then thresh are sent to FN
+        re_assigned = np.sum(np.less_equal(potential_matches_count[match_rows[match_mask],
+                                                                   match_cols[match_mask]] /
+                                           tracker_id_count[match_cols[match_mask]],
+                                           self.track_iou_threshold))  # relative to predicted track length intersection
         # Hungarian algorithm for track_IDF1
-        res['IDFN'] = np.sum(np.logical_and(match_rows < num_gt_ids, match_cols >= num_tracker_ids)).astype(np.int)
-        res['IDFP'] = np.sum(np.logical_and(match_rows >= num_gt_ids, match_cols < num_tracker_ids)).astype(np.int) + len(np.where(match_mask)[0][mask_track_iou])  # sent to sink pred tracks counts as FP
+        res['IDFN'] = np.sum(np.logical_and(match_rows < num_gt_ids, match_cols >= num_tracker_ids)).astype(np.int) + re_assigned
+        res['IDFP'] = np.sum(np.logical_and(match_rows >= num_gt_ids, match_cols < num_tracker_ids)).astype(np.int) + re_assigned  # sent to sink pred tracks counts as FP
         res['IDTP'] = (num_gt_ids - res['IDFN']).astype(np.int)
 
         # Calculate final ID scores
