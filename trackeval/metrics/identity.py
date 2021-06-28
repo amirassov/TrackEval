@@ -139,7 +139,10 @@ class Identity(_BaseMetric):
             res['IDP'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFP'])
         else:
             res['IDP'] = 1
-        res['IDF1'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + 0.5 * res['IDFP'] + 0.5 * res['IDFN'])
+        if res['IDFN'] != 0 or res['IDFP'] != 0:
+            res['IDF1'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + 0.5 * res['IDFP'] + 0.5 * res['IDFN'])
+        else:
+            res['IDF1'] = 1
         return res
 
 
