@@ -131,8 +131,14 @@ class Identity(_BaseMetric):
         """Calculate sub-metric ('field') values which only depend on other sub-metric values.
         This function is used both for both per-sequence calculation, and in combining values across sequences.
         """
-        res['IDR'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFN'])
-        res['IDP'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFP'])
+        if  res['IDFN'] != 0:
+            res['IDR'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFN'])
+        else:
+            res['IDR'] = 1
+        if res['IDFP'] != 0:
+            res['IDP'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + res['IDFP'])
+        else:
+            res['IDP'] = 1
         res['IDF1'] = res['IDTP'] / np.maximum(1.0, res['IDTP'] + 0.5 * res['IDFP'] + 0.5 * res['IDFN'])
         return res
 
