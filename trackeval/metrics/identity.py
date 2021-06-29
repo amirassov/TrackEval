@@ -41,10 +41,10 @@ class Identity(_BaseMetric):
         # Return result quickly if tracker or gt sequence is empty
         if data['num_tracker_dets'] == 0:
             res['IDFN'] = data['num_gt_dets']
-            return res
+            return self._compute_final_fields(res)
         if data['num_gt_dets'] == 0:
             res['IDFP'] = data['num_tracker_dets']
-            return res
+            return self._compute_final_fields(res)
 
         # Variables counting global association
         potential_matches_count = np.zeros((data['num_gt_ids'], data['num_tracker_ids']))
